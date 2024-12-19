@@ -16,9 +16,18 @@ Companies conducting evaluations.
 Individuals practicing tests.
 
 Team Members:
-Kazybek Seitkazy
-Nubeket Zhunussov
-Miras Yerseiit
+Kazybek Seitkazy,
+Nubeket Zhunussov,
+Miras Yerseiit,
 
 ![image](https://github.com/user-attachments/assets/32a15cc0-b399-47ef-94cf-b6b6c4a923ee)
 
+How to start project
+1. go run test.go
+2. run main.html
+
+The tools and resources you used
+Frontend: HTML, CSS, JavaScript, Bootstrap.
+Backend: Go Lang.
+Database: MySQL/PostgreSQL.
+Version Control: Git and GitHub
