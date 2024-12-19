@@ -20,3 +20,5 @@ Kazybek Seitkazy
 Nubeket Zhunussov
 Miras Yerseiit
 
+![image](https://github.com/user-attachments/assets/32a15cc0-b399-47ef-94cf-b6b6c4a923ee)
+
