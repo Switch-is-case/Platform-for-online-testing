@@ -7,10 +7,6 @@ import (
 	"net/http"
 )
 
-type RequestData struct {
-	Message string `json:"message"`
-}
-
 type ResponseData struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
@@ -37,26 +33,16 @@ func handleRequests(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		json.NewEncoder(w).Encode(ResponseData{
 			Status:  "fail",
-			Message: "Method not allowed",
+			Message: "Invalid JSON message",
 		})
 	}
 }
 
 func handlePostRequest(w http.ResponseWriter, r *http.Request) {
-	var requestData RequestData
+	var requestData map[string]interface{}
 
-	// Decode the JSON body
+	// Decode the JSON body into a generic map
 	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ResponseData{
-			Status:  "fail",
-			Message: "Invalid JSON format",
-		})
-		return
-	}
-
-	// Validate the JSON structure
-	if requestData.Message == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ResponseData{
 			Status:  "fail",
@@ -65,10 +51,38 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log the message to the console
-	log.Println("Received message:", requestData.Message)
+	// Check if the "message" key exists
+	messageValue, exists := requestData["message"]
+	if !exists {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ResponseData{
+			Status:  "fail",
+			Message: "Invalid JSON message",
+		})
+		return
+	}
 
-	// Respond with success
+	// Check if the "message" value is a string
+	message, ok := messageValue.(string)
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ResponseData{
+			Status:  "fail",
+			Message: "Invalid JSON message",
+		})
+		return
+	}
+
+	// Check if the "message" value is an empty string
+	if message == "" {
+		json.NewEncoder(w).Encode(ResponseData{
+			Status:  "success",
+			Message: "Data successfully received",
+		})
+		return
+	}
+
+	// For a valid non-empty message
 	json.NewEncoder(w).Encode(ResponseData{
 		Status:  "success",
 		Message: "Data successfully received",
@@ -78,7 +92,7 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 func handleGetRequest(w http.ResponseWriter, r *http.Request) {
 	response := ResponseData{
 		Status:  "success",
-		Message: "GET request received",
+		Message: "Data successfully received",
 	}
 	json.NewEncoder(w).Encode(response)
 }
