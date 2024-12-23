@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Interaction</title>
+    <style>
+        table, th, td {
+            border: 1px solid black;
+            border-collapse: collapse;
+            padding: 5px;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Interact with Server</h1>
+    <button onclick="sendMessage()">Send Message</button>
+    <button onclick="getData()">Get Data</button>
+
+    <h2>Server Response</h2>
+    <div id="response"></div>
+    
+    <h2>Database Users</h2>
+    <table id="usersTable">
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Created At</th>
+            <th>Updated At</th>
+        </tr>
+    </table>
+
+    <script>
+        async function sendMessage() {
+            try {
+                const response = await fetch('/api', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: 'Hello Server' })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('response').innerHTML = `<p>Status: ${data.status}</p><p>Message: ${data.message}</p>`;
+                } else {
+                    throw new Error(data.message);
+                }
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        async function getData() {
+            try {
+                const response = await fetch('/api');
+                const data = await response.json();
+                if (response.ok) {
+                    document.getElementById('response').innerHTML = `<p>Status: ${data.status}</p><p>Message: ${data.message}</p>`;
+                    fetchUsers();
+                } else {
+                    throw new Error(data.message);
+                }
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.innerHTML = `Error: ${message}`;
+            document.getElementById('response').appendChild(errorDiv);
+        }
+
+        async function fetchUsers() {
+    try {
+        const response = await fetch('/users');
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || "Unknown error");
+        }
+        const users = await response.json();
+        const table = document.getElementById('usersTable');
+        users.forEach(user => {
+            const row = table.insertRow();
+            row.insertCell(0).innerText = user.id;
+            row.insertCell(1).innerText = user.name;
+            row.insertCell(2).innerText = user.email;
+            row.insertCell(3).innerText = user.created_at;
+            row.insertCell(4).innerText = user.updated_at;
+        });
+    } catch (error) {
+        showError(error.message);
+    }
+}
+    </script>
+</body>
+</html>
