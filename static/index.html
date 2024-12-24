@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Server Interaction</title>
+    <title>CRUD Operations</title>
     <style>
         table, th, td {
             border: 1px solid black;
@@ -17,17 +17,45 @@
             color: red;
             font-weight: bold;
         }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        form {
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
-    <h1>Interact with Server</h1>
-    <button onclick="sendMessage()">Send Message</button>
-    <button onclick="getData()">Get Data</button>
+    <h1>User Management</h1>
 
-    <h2>Server Response</h2>
-    <div id="response"></div>
-    
-    <h2>Database Users</h2>
+    <!-- Create User Form -->
+    <h2>Create User</h2>
+    <form id="createUserForm">
+        <input type="text" id="createName" placeholder="Name" required>
+        <input type="email" id="createEmail" placeholder="Email" required>
+        <button type="button" onclick="createUser()">Create</button>
+    </form>
+
+    <!-- Update User Form -->
+    <h2>Update User</h2>
+    <form id="updateUserForm">
+        <input type="text" id="updateId" placeholder="User ID" required>
+        <input type="text" id="updateName" placeholder="New Name">
+        <input type="email" id="updateEmail" placeholder="New Email">
+        <button type="button" onclick="updateUser()">Update</button>
+    </form>
+
+    <!-- Delete User Form -->
+    <h2>Delete User</h2>
+    <form id="deleteUserForm">
+        <input type="text" id="deleteId" placeholder="User ID" required>
+        <button type="button" onclick="deleteUser()">Delete</button>
+    </form>
+
+    <!-- Users Table -->
+    <h2>All Users</h2>
+    <button onclick="fetchUsers()">Refresh Users</button>
     <table id="usersTable">
         <tr>
             <th>ID</th>
@@ -38,68 +66,121 @@
         </tr>
     </table>
 
+    <!-- Response Section -->
+    <h2>Server Response</h2>
+    <div id="response"></div>
+
     <script>
-        async function sendMessage() {
+        // Helper function to display responses
+        function displayResponse(message, isSuccess = true) {
+            const responseDiv = document.getElementById('response');
+            responseDiv.innerHTML = `<p class="${isSuccess ? 'success' : 'error'}">${message}</p>`;
+        }
+
+        // Create User
+        async function createUser() {
+            const name = document.getElementById('createName').value;
+            const email = document.getElementById('createEmail').value;
+
             try {
-                const response = await fetch('/api', {
+                const response = await fetch('/users/create', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: 'Hello Server' })
+                    body: JSON.stringify({ name, email })
                 });
                 const data = await response.json();
-                if (response.ok) {
-                    document.getElementById('response').innerHTML = `<p>Status: ${data.status}</p><p>Message: ${data.message}</p>`;
-                } else {
-                    throw new Error(data.message);
-                }
-            } catch (error) {
-                showError(error.message);
-            }
-        }
 
-        async function getData() {
-            try {
-                const response = await fetch('/api');
-                const data = await response.json();
                 if (response.ok) {
-                    document.getElementById('response').innerHTML = `<p>Status: ${data.status}</p><p>Message: ${data.message}</p>`;
+                    displayResponse('User created successfully!');
                     fetchUsers();
                 } else {
-                    throw new Error(data.message);
+                    throw new Error(data.message || 'Failed to create user');
                 }
             } catch (error) {
-                showError(error.message);
+                displayResponse(error.message, false);
             }
         }
 
-        function showError(message) {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'error';
-            errorDiv.innerHTML = `Error: ${message}`;
-            document.getElementById('response').appendChild(errorDiv);
+        // Update User
+        async function updateUser() {
+            const id = document.getElementById('updateId').value;
+            const name = document.getElementById('updateName').value;
+            const email = document.getElementById('updateEmail').value;
+
+            const updates = {};
+            if (name) updates.name = name;
+            if (email) updates.email = email;
+
+            try {
+                const response = await fetch(`/users/update?id=${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updates)
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayResponse('User updated successfully!');
+                    fetchUsers();
+                } else {
+                    throw new Error(data.message || 'Failed to update user');
+                }
+            } catch (error) {
+                displayResponse(error.message, false);
+            }
         }
 
-        async function fetchUsers() {
-    try {
-        const response = await fetch('/users');
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || "Unknown error");
+        // Delete User
+        async function deleteUser() {
+            const id = document.getElementById('deleteId').value;
+
+            try {
+                const response = await fetch(`/users/delete?id=${id}`, { method: 'DELETE' });
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayResponse('User deleted successfully!');
+                    fetchUsers();
+                } else {
+                    throw new Error(data.message || 'Failed to delete user');
+                }
+            } catch (error) {
+                displayResponse(error.message, false);
+            }
         }
-        const users = await response.json();
-        const table = document.getElementById('usersTable');
-        users.forEach(user => {
-            const row = table.insertRow();
-            row.insertCell(0).innerText = user.id;
-            row.insertCell(1).innerText = user.name;
-            row.insertCell(2).innerText = user.email;
-            row.insertCell(3).innerText = user.created_at;
-            row.insertCell(4).innerText = user.updated_at;
-        });
-    } catch (error) {
-        showError(error.message);
-    }
-}
+
+        // Fetch All Users
+        async function fetchUsers() {
+            try {
+                const response = await fetch('/users');
+                const users = await response.json();
+
+                if (response.ok) {
+                    const table = document.getElementById('usersTable');
+                    table.innerHTML = `
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Created At</th>
+                            <th>Updated At</th>
+                        </tr>`;
+                    
+                    users.forEach(user => {
+                        const row = table.insertRow();
+                        row.insertCell(0).innerText = user.id;
+                        row.insertCell(1).innerText = user.name;
+                        row.insertCell(2).innerText = user.email;
+                        row.insertCell(3).innerText = new Date(user.created_at).toLocaleString();
+                        row.insertCell(4).innerText = new Date(user.updated_at).toLocaleString();
+                    });
+                } else {
+                    throw new Error(users.message || 'Failed to fetch users');
+                }
+            } catch (error) {
+                displayResponse(error.message, false);
+            }
+        }
     </script>
 </body>
 </html>
