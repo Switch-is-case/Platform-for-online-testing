@@ -5,17 +5,31 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
+    //"net/smtp"
+	"strconv"
 	"time"
 
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"golang.org/x/time/rate"
+
+	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+var logger = logrus.New() // Инициализация логгера
+var limiter = rate.NewLimiter(1, 1) // 1 запрос в секунду и без буста
 
 type ResponseData struct {
 	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+type EmailRequest struct {
+	Email   string `json:"email"`
 	Message string `json:"message"`
 }
 
@@ -28,6 +42,11 @@ type User struct {
 }
 
 func main() {
+
+    // Настройка логирования в JSON формате
+    logger.SetFormatter(&logrus.JSONFormatter{})
+    logger.SetLevel(logrus.InfoLevel)  // Уровень логирования - InfoLevel
+
 	// MongoDB connection string
 	uri := "mongodb://localhost:27017"
 
@@ -38,17 +57,28 @@ func main() {
 	// Connect to MongoDB
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
 	if err != nil {
-		log.Fatalf("Failed to connect to MongoDB: %v", err)
+		logger.WithFields(logrus.Fields{
+			"action": "connect_mongo",
+			"status": "failure",
+			"error":  err.Error(),
+		}).Fatal("Failed to connect to MongoDB")
 	}
 	defer client.Disconnect(ctx)
 
 	// Test the connection
 	err = client.Ping(ctx, nil)
 	if err != nil {
-		log.Fatalf("Failed to ping MongoDB: %v", err)
+		logger.WithFields(logrus.Fields{
+			"action": "ping_mongo",
+			"status": "failure",
+			"error":  err.Error(),
+		}).Fatal("Failed to ping MongoDB")
 	}
-
-	fmt.Println("Connected to MongoDB!")
+    
+    logger.WithFields(logrus.Fields{
+		"action": "connect_mongo",
+		"status": "success",
+	}).Info("Connected to MongoDB successfully")
 
 	// Access a database and collection
 	database := client.Database("mycollection")
@@ -65,6 +95,11 @@ func main() {
                 Status:  "fail",
                 Message: "Method not allowed",
             })
+            logger.WithFields(logrus.Fields{
+				"method": r.Method,
+				"action": "method_not_allowed",
+				"status": "failure",
+			}).Warn("Method not allowed")
         }
     })
 
@@ -78,6 +113,11 @@ func main() {
                 Status:  "fail",
                 Message: "Method not allowed",
             })
+            logger.WithFields(logrus.Fields{
+				"method": r.Method,
+				"action": "method_not_allowed",
+				"status": "failure",
+			}).Warn("Method not allowed")
         }
     })
 
@@ -90,6 +130,11 @@ func main() {
                 Status:  "fail",
                 Message: "Method not allowed",
             })
+            logger.WithFields(logrus.Fields{
+				"method": r.Method,
+				"action": "method_not_allowed",
+				"status": "failure",
+			}).Warn("Method not allowed")
         }
     })
 
@@ -102,6 +147,11 @@ func main() {
                 Status:  "fail",
                 Message: "Method not allowed",
             })
+            logger.WithFields(logrus.Fields{
+				"method": r.Method,
+				"action": "method_not_allowed",
+				"status": "failure",
+			}).Warn("Method not allowed")
         }
     })
 
@@ -114,13 +164,56 @@ func main() {
                 Status:  "fail",
                 Message: "Method not allowed",
             })
+            logger.WithFields(logrus.Fields{
+				"method": r.Method,
+				"action": "method_not_allowed",
+				"status": "failure",
+			}).Warn("Method not allowed")
         }
     })
 
+    http.HandleFunc("/users/find", func(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodGet {
+            FindUserByID(w, r, collection)
+        } else {
+            w.WriteHeader(http.StatusMethodNotAllowed)
+            json.NewEncoder(w).Encode(ResponseData{
+                Status:  "fail",
+                Message: "Method not allowed",
+            })
+            logger.WithFields(logrus.Fields{
+				"method": r.Method,
+				"action": "method_not_allowed",
+				"status": "failure",
+			}).Warn("Method not allowed")
+        }
+    })
+
+    http.HandleFunc("/users/filter", func(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodGet {
+            GetFilteredUsers(w, r, collection)
+        } else {
+            w.WriteHeader(http.StatusMethodNotAllowed)
+            json.NewEncoder(w).Encode(ResponseData{
+                Status:  "fail",
+                Message: "Method not allowed",
+            })
+            logger.WithFields(logrus.Fields{
+				"method": r.Method,
+				"action": "method_not_allowed",
+				"status": "failure",
+			}).Warn("Method not allowed")
+        }
+    })
 	// Serve the HTML file for browser access
 	http.HandleFunc("/", serveHTML)
 
-	fmt.Println("Server is running on port 8080...")
+    
+
+	logger.WithFields(logrus.Fields{
+		"action": "start_server",
+		"status": "success",
+	}).Info("Server started on port 8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
 		log.Fatal(err)
 	}
@@ -409,7 +502,166 @@ func DeleteUser(w http.ResponseWriter, r *http.Request, collection *mongo.Collec
     })
 }
 
+// FindUserByID finds a user by ID
+func FindUserByID(w http.ResponseWriter, r *http.Request, collection *mongo.Collection) {
+    idParam := r.URL.Query().Get("id")
+    if idParam == "" {
+        w.WriteHeader(http.StatusBadRequest)
+        json.NewEncoder(w).Encode(ResponseData{
+            Status:  "fail",
+            Message: "ID is required",
+        })
+        return
+    }
+
+    objectID, err := primitive.ObjectIDFromHex(idParam)
+    if err != nil {
+        w.WriteHeader(http.StatusBadRequest)
+        json.NewEncoder(w).Encode(ResponseData{
+            Status:  "fail",
+            Message: "Invalid ID format",
+        })
+        return
+    }
+
+    var user User
+    err = collection.FindOne(context.Background(), bson.M{"_id": objectID}).Decode(&user)
+    if err != nil {
+        w.WriteHeader(http.StatusNotFound)
+        json.NewEncoder(w).Encode(ResponseData{
+            Status:  "fail",
+            Message: "User not found",
+        })
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(user)
+}
+
+// GetFilteredUsers retrieves users with filtering, sorting, and pagination
+func GetFilteredUsers(w http.ResponseWriter, r *http.Request, collection *mongo.Collection) {
+    var users []User
+
+    filterName := r.URL.Query().Get("name")
+    filterEmail := r.URL.Query().Get("email")
+    sortField := r.URL.Query().Get("sort")
+    sortOrder := r.URL.Query().Get("order")
+    pageParam := r.URL.Query().Get("page")
+    limitParam := r.URL.Query().Get("limit")
+
+    page := 1
+    limit := 6
+
+    if pageParam != "" {
+        if parsedPage, err := strconv.Atoi(pageParam); err == nil && parsedPage > 0 {
+            page = parsedPage
+        }
+    }
+    if limitParam != "" {
+        if parsedLimit, err := strconv.Atoi(limitParam); err == nil && parsedLimit > 0 {
+            limit = parsedLimit
+        }
+    }
+
+    filter := bson.M{}
+    if filterName != "" {
+        filter["name"] = bson.M{"$regex": filterName, "$options": "i"}
+    }
+    if filterEmail != "" {
+        filter["email"] = bson.M{"$regex": filterEmail, "$options": "i"}
+    }
+
+    sort := bson.D{}
+    if sortField != "" {
+        order := 1
+        if sortOrder == "desc" {
+            order = -1
+        }
+        sort = append(sort, bson.E{Key: sortField, Value: order})
+    }
+
+    skip := int64((page - 1) * limit)
+    limit64 := int64(limit)
+
+    total, err := collection.CountDocuments(context.Background(), filter)
+    if err != nil {
+        log.Printf("Error counting documents: %v", err)
+        w.WriteHeader(http.StatusInternalServerError)
+        json.NewEncoder(w).Encode(ResponseData{
+            Status:  "fail",
+            Message: "Error counting users",
+        })
+        return
+    }
+
+    cursor, err := collection.Find(context.Background(), filter, &options.FindOptions{
+        Sort:  sort,
+        Skip:  &skip,
+        Limit: &limit64,
+    })
+    if err != nil {
+        log.Printf("Error fetching users: %v", err)
+        w.WriteHeader(http.StatusInternalServerError)
+        json.NewEncoder(w).Encode(ResponseData{
+            Status:  "fail",
+            Message: "Error fetching users",
+        })
+        return
+    }
+    defer cursor.Close(context.Background())
+
+    for cursor.Next(context.Background()) {
+        var user User
+        if err := cursor.Decode(&user); err != nil {
+            log.Printf("Error decoding user: %v", err)
+            w.WriteHeader(http.StatusInternalServerError)
+            json.NewEncoder(w).Encode(ResponseData{
+                Status:  "fail",
+                Message: "Error decoding user",
+            })
+            return
+        }
+        users = append(users, user)
+    }
+
+    if err := cursor.Err(); err != nil {
+        log.Printf("Cursor error: %v", err)
+        w.WriteHeader(http.StatusInternalServerError)
+        json.NewEncoder(w).Encode(ResponseData{
+            Status:  "fail",
+            Message: "Cursor error",
+        })
+        return
+    }
+
+    totalPages := int(math.Ceil(float64(total) / float64(limit)))
+    response := map[string]interface{}{
+        "status":     "success",
+        "currentPage": page,
+        "limit":       limit,
+        "totalUsers":  total,
+        "totalPages":  totalPages,
+        "users":       users,
+    }
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(response)
+}
+
+
+
 // Serve the HTML file for browser requests
 func serveHTML(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "./static/index.html")
+    if !limiter.Allow() {
+        // Лимит превышен, отправляем ошибку
+        http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+        fmt.Println("Rate limit exceeded, returning 429")
+        return
+    }
+    
+    // Задержка, чтобы увидеть, когда лимит срабатывает
+    time.Sleep(500 * time.Millisecond)
+    
+    fmt.Println("Request allowed, serving the file")
+    http.ServeFile(w, r, "./static/index.html")
 }

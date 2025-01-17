@@ -24,6 +24,10 @@
         form {
             margin-bottom: 20px;
         }
+        .pagination button {
+            padding: 5px 10px;
+            margin: 2px;
+        }
     </style>
 </head>
 <body>
@@ -53,6 +57,30 @@
         <button type="button" onclick="deleteUser()">Delete</button>
     </form>
 
+    <div>
+        <h2>Find User By ID</h2>
+        <form id="findUserForm" onsubmit="findUser(event)">
+            <label for="findId">User ID:</label>
+            <input type="text" id="findId" placeholder="Enter User ID" required />
+            <button type="submit">Find User</button>
+        </form>
+        <div id="findUserResult"></div>
+    </div>
+
+    <!-- Filters and Sorting -->
+    <div>
+        <h2>Filter and Sort</h2>
+        <form id="filterForm">
+            <input type="text" id="filterName" placeholder="Filter by Name" oninput="applyFilter()">
+            <select id="sortSelect" onchange="applySort()">
+                <option value="name_asc">Sort by Name (A-Z)</option>
+                <option value="name_desc">Sort by Name (Z-A)</option>
+                <option value="created_at_asc">Sort by Created At (Oldest First)</option>
+                <option value="created_at_desc">Sort by Created At (Newest First)</option>
+            </select>
+        </form>
+    </div>
+
     <!-- Users Table -->
     <h2>All Users</h2>
     <button onclick="fetchUsers()">Refresh Users</button>
@@ -66,11 +94,24 @@
         </tr>
     </table>
 
+    <!-- Pagination Controls -->
+    <div class="pagination">
+        <button id="prevPage" onclick="changePage('prev')">Previous</button>
+        <button id="nextPage" onclick="changePage('next')">Next</button>
+    </div>
+
     <!-- Response Section -->
     <h2>Server Response</h2>
     <div id="response"></div>
 
+    <!-- Button to go to profile.html -->
+    <button onclick="window.location.href='profile.html'">Go to Profile</button>
+
     <script>
+        let currentPage = 1;
+        let pageSize = 5;
+        let allUsers = [];
+
         // Helper function to display responses
         function displayResponse(message, isSuccess = true) {
             const responseDiv = document.getElementById('response');
@@ -152,28 +193,12 @@
         // Fetch All Users
         async function fetchUsers() {
             try {
-                const response = await fetch('/users');
+                const response = await fetch(`/users?page=${currentPage}&size=${pageSize}`);
                 const users = await response.json();
 
                 if (response.ok) {
-                    const table = document.getElementById('usersTable');
-                    table.innerHTML = `
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Created At</th>
-                            <th>Updated At</th>
-                        </tr>`;
-                    
-                    users.forEach(user => {
-                        const row = table.insertRow();
-                        row.insertCell(0).innerText = user.id;
-                        row.insertCell(1).innerText = user.name;
-                        row.insertCell(2).innerText = user.email;
-                        row.insertCell(3).innerText = new Date(user.created_at).toLocaleString();
-                        row.insertCell(4).innerText = new Date(user.updated_at).toLocaleString();
-                    });
+                    allUsers = users;
+                    displayUsers();
                 } else {
                     throw new Error(users.message || 'Failed to fetch users');
                 }
@@ -181,6 +206,72 @@
                 displayResponse(error.message, false);
             }
         }
+
+        function displayUsers() {
+            const table = document.getElementById('usersTable');
+            table.innerHTML = `
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Created At</th>
+                    <th>Updated At</th>
+                </tr>`;
+
+            let filteredUsers = allUsers;
+
+            // Apply filter
+            const filterName = document.getElementById('filterName').value.toLowerCase();
+            if (filterName) {
+                filteredUsers = filteredUsers.filter(user =>
+                    user.name.toLowerCase().includes(filterName)
+                );
+            }
+
+            // Apply sorting
+            const sortOption = document.getElementById('sortSelect').value;
+            if (sortOption === 'name_asc') {
+                filteredUsers.sort((a, b) => a.name.localeCompare(b.name));
+            } else if (sortOption === 'name_desc') {
+                filteredUsers.sort((a, b) => b.name.localeCompare(a.name));
+            } else if (sortOption === 'created_at_asc') {
+                filteredUsers.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            } else if (sortOption === 'created_at_desc') {
+                filteredUsers.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            }
+
+            // Display filtered and sorted users
+            filteredUsers.forEach(user => {
+                const row = table.insertRow();
+                row.insertCell(0).innerText = user.id;
+                row.insertCell(1).innerText = user.name;
+                row.insertCell(2).innerText = user.email;
+                row.insertCell(3).innerText = new Date(user.created_at).toLocaleString();
+                row.insertCell(4).innerText = new Date(user.updated_at).toLocaleString();
+            });
+        }
+
+        // Handle pagination
+        function changePage(direction) {
+            if (direction === 'prev' && currentPage > 1) {
+                currentPage--;
+            } else if (direction === 'next') {
+                currentPage++;
+            }
+            fetchUsers();
+        }
+
+        // Filter and Sort Handler
+        function applyFilter() {
+            displayUsers();
+        }
+
+        function applySort() {
+            displayUsers();
+        }
+
+        // Initial fetch
+        fetchUsers();
     </script>
 </body>
 </html>
